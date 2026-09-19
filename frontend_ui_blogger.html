@@ -1,0 +1,651 @@
+<div id="app-container" class="fixed inset-0 z-[9999] bg-gray-50 overflow-y-auto font-sans text-gray-800 flex flex-col w-full h-full">
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Font Awesome -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  
+  <style>
+    body { margin: 0; padding: 0; overflow: hidden; }
+    .blogger-element { display: none !important; }
+    ::-webkit-scrollbar { width: 8px; }
+    ::-webkit-scrollbar-track { background: #f1f1f1; }
+    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+    .loader { border-top-color: #3b82f6; -webkit-animation: spinner 1.5s linear infinite; animation: spinner 1.5s linear infinite; }
+    @keyframes spinner { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    .markdown-body h1 { font-size: 2em; font-weight: bold; margin-bottom: 0.5em; border-bottom: 1px solid #eaecef; padding-bottom: 0.3em; }
+    .markdown-body h2 { font-size: 1.5em; font-weight: bold; margin-top: 1em; margin-bottom: 0.5em; }
+    .markdown-body h3 { font-size: 1.25em; font-weight: bold; margin-top: 1em; margin-bottom: 0.5em; }
+    .markdown-body p { margin-bottom: 1em; line-height: 1.6; }
+    .markdown-body ul, .markdown-body ol { margin-bottom: 1em; padding-left: 2em; list-style-type: disc; }
+    .markdown-body li { margin-bottom: 0.25em; }
+  </style>
+
+  <nav class="bg-white border-b shadow-sm sticky top-0 z-50">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex justify-between h-16">
+        <div class="flex items-center cursor-pointer" onclick="renderView('landing')">
+          <i class="fa-solid fa-graduation-cap text-blue-600 text-2xl mr-2"></i>
+          <span class="font-bold text-xl tracking-tight text-gray-900">Instant Journal Gen</span>
+        </div>
+        <div class="flex items-center space-x-4" id="nav-auth-buttons">
+          <!-- Dinamis via JS -->
+        </div>
+      </div>
+    </div>
+  </nav>
+
+  <main class="flex-grow flex flex-col" id="main-content">
+    <!-- View akan dirender di sini oleh JavaScript -->
+  </main>
+
+  <div id="toast" class="fixed bottom-5 right-5 transform translate-y-20 opacity-0 transition-all duration-300 z-[10000] bg-gray-800 text-white px-6 py-3 rounded-lg shadow-xl flex items-center">
+    <i id="toast-icon" class="fas mr-2"></i>
+    <span id="toast-msg">Notification</span>
+  </div>
+</div>
+
+<script>
+const IS_PREVIEW = true; 
+const GAS_URL = "URL_DEPLOY_GAS_ANDA_DISINI";
+
+let currentUser = null; 
+let currentView = 'landing';
+let currentDraft = null;
+
+const DUMMY_USERS = {
+  'admin': { username: 'admin', password: 'edudigital', role: 'admin', tier: 'paid', articleCount: 0, apiKey: '' },
+  'freeuser': { username: 'freeuser', password: 'edudigital', role: 'user', tier: 'free', articleCount: 2, apiKey: '' },
+  'paiduser': { username: 'paiduser', password: 'edudigital', role: 'user', tier: 'paid', articleCount: 15, apiKey: 'dummy-ai-key-123' }
+};
+
+function initApp() {
+  const savedUser = localStorage.getItem('journalGenUser');
+  if (savedUser) {
+    try {
+      currentUser = JSON.parse(savedUser);
+    } catch(e) {
+      currentUser = null;
+    }
+  }
+  
+  if (currentUser) {
+    renderView('dashboard');
+  } else {
+    renderView('landing');
+  }
+  updateNavbar();
+}
+
+function showToast(message, type = 'info') {
+  const toast = document.getElementById('toast');
+  const icon = document.getElementById('toast-icon');
+  const msg = document.getElementById('toast-msg');
+  if (!toast || !icon || !msg) return;
+  
+  msg.innerText = message;
+  icon.className = 'fas mr-2 ';
+  if (type === 'success') { icon.className += 'fa-check-circle text-green-400'; }
+  else if (type === 'error') { icon.className += 'fa-exclamation-circle text-red-400'; }
+  else { icon.className += 'fa-info-circle text-blue-400'; }
+  
+  toast.classList.remove('translate-y-20', 'opacity-0');
+  setTimeout(() => {
+    toast.classList.add('translate-y-20', 'opacity-0');
+  }, 3000);
+}
+
+function updateNavbar() {
+  const navBox = document.getElementById('nav-auth-buttons');
+  if (!navBox) return;
+  if (currentUser) {
+    navBox.innerHTML = `
+      <span class="text-sm text-gray-600 hidden sm:inline">Hi, <b>${currentUser.username}</b> (${currentUser.tier.toUpperCase()})</span>
+      <button onclick="renderView('dashboard')" class="text-gray-600 hover:text-blue-600 px-3 py-2 text-sm font-medium transition"><i class="fa-solid fa-chart-line mr-1"></i> Dashboard</button>
+      <button onclick="logout()" class="bg-red-50 text-red-600 hover:bg-red-100 px-4 py-2 rounded text-sm font-medium transition"><i class="fa-solid fa-sign-out-alt mr-1"></i> Logout</button>
+    `;
+  } else {
+    navBox.innerHTML = `
+      <button onclick="renderView('login')" class="text-gray-600 hover:text-blue-600 px-3 py-2 text-sm font-medium transition">Login</button>
+      <button onclick="renderView('register')" class="bg-blue-600 text-white hover:bg-blue-700 px-4 py-2 rounded text-sm font-medium transition shadow">Sign Up Free</button>
+    `;
+  }
+}
+
+function logout() {
+  currentUser = null;
+  localStorage.removeItem('journalGenUser');
+  renderView('landing');
+  showToast('Logged out successfully', 'success');
+}
+
+async function callBackend(action, payload) {
+  if (IS_PREVIEW) {
+    return simulateBackend(action, payload);
+  }
+
+  try {
+    const response = await fetch(GAS_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ action: action, payload: payload })
+    });
+    const result = await response.json();
+    if (result.status === 'error') {
+      throw new Error(result.message || 'Error occurred');
+    }
+    return result;
+  } catch (error) {
+    throw error;
+  }
+}
+
+async function simulateBackend(action, payload) {
+  return new Promise((resolve, reject) => {
+    setTimeout(() => {
+      if (action === 'login') {
+        const user = Object.values(DUMMY_USERS).find(u => u.username === payload.username && u.password === payload.password);
+        if (user) resolve({ status: 'success', data: { username: user.username, role: user.role, tier: user.tier, articleCount: user.articleCount, apiKey: user.apiKey } });
+        else reject(new Error('Invalid username or password. Try freeuser / edudigital'));
+      }
+      else if (action === 'register') {
+        reject(new Error('Registration is disabled in preview mode. Please login with freeuser / edudigital'));
+      }
+      else if (action === 'saveApiKey') {
+        currentUser.apiKey = payload.apiKey;
+        resolve({ status: 'success', message: 'API Key Saved' });
+      }
+      else if (action === 'generateArticle') {
+        if (currentUser.tier === 'free' && currentUser.articleCount >= 3) {
+          reject(new Error('Free tier limit reached (3/3). Please upgrade.'));
+          return;
+        }
+        if (currentUser.tier === 'paid' && !currentUser.apiKey) {
+          reject(new Error('Please set your Google AI Studio API Key in the dashboard first.'));
+          return;
+        }
+        
+        currentUser.articleCount++;
+        localStorage.setItem('journalGenUser', JSON.stringify(currentUser));
+        
+        const targetWords = parseInt(payload.wordCount || "1500");
+        const repeatCount = Math.max(1, Math.floor(targetWords / 500));
+        
+        let expandedIntro = "";
+        for(let i = 1; i <= repeatCount; i++) {
+          expandedIntro += `Paragraf ${i}: Penelitian mengenai ${payload.topic} menjadi sangat krusial dalam dinamika akademis saat ini. Berbagai studi terdahulu telah menyoroti aspek fundamental ini, namun analisis komprehensif terkait metodologi ${payload.method} masih memerlukan pembahasan mendalam. Dalam konteks ini, urgensi penelitian berfokus pada penguatan kerangka teoritis dan praktis.\n\n`;
+        }
+
+        const dummyDraft = `
+# ${payload.topic}
+
+## Abstract
+**Background:** This study explores ${payload.topic}. 
+**Objective:** To understand the fundamental concepts and empirical relations.
+**Method:** A ${payload.method} approach was utilized.
+**Results:** [Insert expected results framework here].
+**Conclusion:** The findings suggest significant implications for the field.
+*Keywords: ${payload.topic.split(' ').slice(0,3).join(', ')}, academic, research*
+
+## 1. Introduction
+${expandedIntro}
+**Research Gap:** What remains unexplored is how this applies in modern contexts.
+**Novelty:** This research proposes a new theoretical framework.
+
+## 2. Method
+**Proposed Method:** We suggest a ${payload.method} design.
+**Data Collection:** [Insert proposed data collection technique].
+**Data Analysis:** [Insert proposed analysis method].
+
+## 3. Results Framework
+*Note: As actual data was not provided, below is the framework for presenting results.*
+- [Insert sample characteristics]
+- [Insert descriptive statistics / qualitative themes]
+- [Insert main findings]
+
+## 4. Discussion
+The anticipated findings align with existing theories while challenging certain assumptions. Theoretical implications suggest a paradigm shift.
+
+## 5. Conclusion
+In conclusion, addressing ${payload.topic} requires comprehensive methodology. 
+**Limitations:** Sample size and contextual constraints.
+
+## References
+[1] Author, A. (2023). A study on ${payload.topic}. *Journal of Excellence*, 1(1), 1-10.
+        `;
+        resolve({ status: 'success', data: { draft: dummyDraft, title: payload.topic } });
+      }
+    }, 800);
+  });
+}
+
+function renderView(viewName) {
+  currentView = viewName;
+  updateNavbar();
+  const main = document.getElementById('main-content');
+  if (!main) return;
+  main.innerHTML = '';
+
+  if (viewName === 'landing') {
+    main.innerHTML = `
+      <div class="flex-grow flex items-center justify-center bg-gradient-to-br from-blue-50 to-white py-12 px-4 sm:px-6 lg:px-8">
+        <div class="max-w-3xl text-center">
+          <div class="inline-flex items-center gap-2 px-3 py-1 bg-blue-100 text-blue-800 text-xs font-semibold rounded-full mb-6">
+            <i class="fas fa-sparkles"></i> AI Academic Manuscript Assistant
+          </div>
+          <h1 class="text-4xl sm:text-5xl font-extrabold text-gray-900 tracking-tight mb-6 leading-tight">
+            Instant <span class="text-blue-600">Journal Article</span> Generator
+          </h1>
+          <p class="text-lg sm:text-xl text-gray-600 mb-8 max-w-2xl mx-auto">
+            Create a structured academic journal article from your research topic in minutes. AI-powered drafting with strict academic standards.
+          </p>
+          <div class="flex flex-col sm:flex-row justify-center gap-4">
+            <button onclick="renderView('login')" class="bg-blue-600 text-white px-8 py-3 rounded-lg text-lg font-semibold hover:bg-blue-700 shadow-lg hover:shadow-xl transition">Try Demo Account</button>
+            <button onclick="renderView('register')" class="bg-white text-blue-600 border border-blue-600 px-8 py-3 rounded-lg text-lg font-semibold hover:bg-blue-50 shadow transition">Sign Up Free</button>
+          </div>
+          <div class="mt-12 grid grid-cols-1 md:grid-cols-3 gap-6 text-left">
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+              <i class="fas fa-bolt text-yellow-500 text-2xl mb-3"></i>
+              <h3 class="font-bold text-gray-900">Instant Structure</h3>
+              <p class="text-sm text-gray-500 mt-2">Generate standard IMRaD structure instantly based on your research topic.</p>
+            </div>
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+              <i class="fas fa-shield-alt text-green-500 text-2xl mb-3"></i>
+              <h3 class="font-bold text-gray-900">Anti-Hallucination</h3>
+              <p class="text-sm text-gray-500 mt-2">Strict rules prevent fake data generation. Provides empirical analytical frameworks instead.</p>
+            </div>
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+              <i class="fas fa-file-word text-blue-500 text-2xl mb-3"></i>
+              <h3 class="font-bold text-gray-900">Easy Export</h3>
+              <p class="text-sm text-gray-500 mt-2">Download your generated draft directly as a Word document (.doc) ready for submission.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  } 
+  
+  else if (viewName === 'login' || viewName === 'register') {
+    const isLogin = viewName === 'login';
+    main.innerHTML = `
+      <div class="flex-grow flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
+        <div class="max-w-md w-full bg-white rounded-xl shadow-lg p-8 border border-gray-100">
+          <div class="text-center mb-8">
+            <h2 class="text-3xl font-bold text-gray-900">${isLogin ? 'Welcome Back' : 'Create Account'}</h2>
+            <p class="text-sm text-gray-500 mt-2">
+              ${isLogin ? 'Preview Demo: <b>freeuser</b> / <b>edudigital</b> atau <b>paiduser</b> / <b>edudigital</b>' : 'Sign up to start generating journal drafts.'}
+            </p>
+          </div>
+          <form id="auth-form" onsubmit="handleAuth(event, '${viewName}')" class="space-y-5">
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Username</label>
+              <input type="text" id="auth-user" value="${isLogin ? 'freeuser' : ''}" required class="w-full border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 p-2.5 border text-sm">
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Password</label>
+              <input type="password" id="auth-pass" value="${isLogin ? 'edudigital' : ''}" required class="w-full border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 p-2.5 border text-sm">
+            </div>
+            ${!isLogin ? `
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Account Tier</label>
+              <select id="auth-tier" class="w-full border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 p-2.5 border text-sm">
+                <option value="free">Free Tier (Max 3 Articles)</option>
+                <option value="paid">Paid Tier (Unlimited - BYO API Key)</option>
+              </select>
+            </div>` : ''}
+            <button type="submit" id="auth-btn" class="w-full flex justify-center py-2.5 px-4 border border-transparent rounded-lg shadow text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 transition">
+              ${isLogin ? 'Sign In' : 'Register'}
+            </button>
+          </form>
+          <div class="mt-6 text-center text-sm">
+            ${isLogin ? 
+              `Don't have an account? <a href="#" onclick="renderView('register')" class="text-blue-600 font-semibold hover:underline">Register</a>` : 
+              `Already have an account? <a href="#" onclick="renderView('login')" class="text-blue-600 font-semibold hover:underline">Login</a>`}
+          </div>
+        </div>
+      </div>
+    `;
+  }
+  
+  else if (viewName === 'dashboard') {
+    if (!currentUser) return renderView('login');
+    const isFree = currentUser.tier === 'free';
+    const usagePercent = isFree ? Math.min(100, (currentUser.articleCount / 3) * 100) : 0;
+    
+    main.innerHTML = `
+      <div class="flex-grow bg-gray-50 p-6 sm:p-10">
+        <div class="max-w-5xl mx-auto space-y-6">
+          <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+            <div>
+              <h1 class="text-2xl font-bold text-gray-900">User Dashboard</h1>
+              <p class="text-sm text-gray-500">Manage your subscription tier and generate new manuscript drafts.</p>
+            </div>
+            <button onclick="renderView('generator')" class="bg-blue-600 text-white px-5 py-2.5 rounded-lg shadow hover:bg-blue-700 transition font-medium text-sm flex items-center">
+              <i class="fas fa-plus mr-2"></i> New Article Draft
+            </button>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+              <h3 class="text-lg font-semibold text-gray-800 mb-3">Plan Details</h3>
+              <div class="flex items-center justify-between mb-3">
+                <span class="text-gray-600 text-sm">Current Tier:</span>
+                <span class="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-bold uppercase">${currentUser.tier}</span>
+              </div>
+              ${isFree ? `
+                <div class="mt-4">
+                  <div class="flex justify-between text-sm mb-1">
+                    <span class="text-gray-600">Quota Usage</span>
+                    <span class="font-medium ${currentUser.articleCount >= 3 ? 'text-red-600' : 'text-gray-900'}">${currentUser.articleCount} / 3 Articles</span>
+                  </div>
+                  <div class="w-full bg-gray-200 rounded-full h-2.5">
+                    <div class="bg-blue-600 h-2.5 rounded-full" style="width: ${usagePercent}%"></div>
+                  </div>
+                  ${currentUser.articleCount >= 3 ? `<p class="text-xs text-red-500 mt-2"><i class="fas fa-exclamation-triangle"></i> You have reached your free limit. Upgrade to Paid tier.</p>` : ''}
+                </div>
+              ` : `
+                <div class="mt-4 p-3 bg-green-50 border border-green-200 rounded-lg text-sm text-green-800 flex items-center">
+                  <i class="fas fa-check-circle mr-2 text-green-600"></i> You have unlimited article generation access.
+                </div>
+              `}
+            </div>
+
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-200 ${isFree ? 'opacity-60 pointer-events-none' : ''}">
+              <h3 class="text-lg font-semibold text-gray-800 mb-2">Google AI Studio API Key</h3>
+              <p class="text-xs text-gray-500 mb-4">
+                ${isFree ? 'Upgrade to Paid tier to use your own API Key for unlimited generation.' : 'Enter your Gemini API Key to enable generation.'}
+              </p>
+              <form onsubmit="handleSaveApiKey(event)" class="flex gap-2">
+                <input type="password" id="user-api-key" placeholder="AIzaSy..." value="${currentUser.apiKey || ''}" class="flex-grow border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500 p-2 border text-sm" ${isFree ? 'disabled' : 'required'}>
+                <button type="submit" class="bg-gray-800 text-white px-4 py-2 rounded-lg shadow hover:bg-gray-900 transition text-sm font-medium" ${isFree ? 'disabled' : ''}>Save Key</button>
+              </form>
+              <div class="mt-2 text-xs text-gray-400">Get key from <a href="https://aistudio.google.com/app/apikey" target="_blank" class="text-blue-500 hover:underline">Google AI Studio</a>.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  else if (viewName === 'generator') {
+    main.innerHTML = `
+      <div class="flex-grow bg-gray-50 p-6 sm:p-10">
+        <div class="max-w-4xl mx-auto bg-white rounded-xl shadow-lg overflow-hidden border border-gray-100">
+          <div class="bg-blue-600 px-6 py-4">
+            <h2 class="text-xl font-bold text-white">Generate Manuscript Draft</h2>
+            <p class="text-blue-100 text-sm">Specify research parameters to generate a structured academic draft.</p>
+          </div>
+          
+          <form id="generate-form" onsubmit="handleGenerate(event)" class="p-6 space-y-6">
+            <div>
+              <label class="block text-sm font-semibold text-gray-700 mb-1">Research Topic / Article Title <span class="text-red-500">*</span></label>
+              <input type="text" id="gen-topic" required placeholder="e.g., The Effect of Digital Literacy on Student Academic Performance" class="w-full border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500 p-3 border">
+            </div>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Article Language</label>
+                <select id="gen-lang" class="w-full border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500 p-2.5 border">
+                  <option value="English">English</option>
+                  <option value="Bahasa Indonesia">Bahasa Indonesia</option>
+                </select>
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Target Word Count</label>
+                <input type="number" id="gen-words" required min="500" max="10000" step="100" value="2500" placeholder="e.g., 2500" class="w-full border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500 p-2.5 border">
+                <p class="text-xs text-gray-500 mt-1">Recommended: 1,500 - 5,000 words</p>
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Research Method</label>
+                <select id="gen-method" class="w-full border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500 p-2.5 border">
+                  <option value="Qualitative">Qualitative</option>
+                  <option value="Quantitative">Quantitative</option>
+                </select>
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Citation Style</label>
+                <select id="gen-citation" class="w-full border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500 p-2.5 border">
+                  <option value="APA 7th Edition">APA 7th Edition</option>
+                  <option value="Vancouver">Vancouver</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="bg-amber-50 border-l-4 border-amber-400 p-4 rounded-r">
+              <div class="flex">
+                <div class="flex-shrink-0"><i class="fas fa-exclamation-triangle text-amber-500"></i></div>
+                <div class="ml-3">
+                  <p class="text-xs sm:text-sm text-amber-800">
+                    <strong>Academic Integrity Notice:</strong> The AI will not fabricate empirical data or quotes. It generates structured Results and Discussion frameworks for you to populate with your authentic findings.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div class="pt-4 flex justify-between items-center border-t">
+              <button type="button" onclick="renderView('dashboard')" class="text-gray-500 hover:text-gray-700 font-medium text-sm">Cancel</button>
+              <button type="submit" id="btn-generate" class="bg-blue-600 text-white px-8 py-3 rounded-lg font-bold shadow hover:bg-blue-700 transition flex items-center">
+                <i class="fas fa-magic mr-2"></i> GENERATE MANUSCRIPT
+              </button>
+            </div>
+          </form>
+
+          <div id="progress-container" class="hidden p-8 bg-gray-50 flex flex-col items-center justify-center border-t border-gray-200">
+            <div class="w-14 h-14 border-4 border-blue-200 rounded-full loader border-t-blue-600 mb-4"></div>
+            <h3 class="text-lg font-bold text-gray-800 mb-2" id="progress-text">Initializing AI Engine...</h3>
+            <div class="w-full max-w-md bg-gray-200 rounded-full h-2 mb-4 overflow-hidden">
+              <div id="progress-bar" class="bg-blue-600 h-2 rounded-full transition-all duration-500" style="width: 5%"></div>
+            </div>
+            <ul class="text-xs sm:text-sm text-gray-500 space-y-1 text-center" id="progress-steps">
+            </ul>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  else if (viewName === 'result') {
+    if(!currentDraft) return renderView('dashboard');
+    
+    let htmlContent = currentDraft.draft
+      .replace(/^### (.*$)/gim, '<h3>$1</h3>')
+      .replace(/^## (.*$)/gim, '<h2>$1</h2>')
+      .replace(/^# (.*$)/gim, '<h1>$1</h1>')
+      .replace(/\*\*(.*?)\*\*/gim, '<strong>$1</strong>')
+      .replace(/\*(.*?)\*/gim, '<em>$1</em>')
+      .replace(/^\- (.*$)/gim, '<ul><li>$1</li></ul>')
+      .replace(/<\/ul>\n<ul>/gim, '')
+      .replace(/\n\n/gim, '<p></p>');
+
+    main.innerHTML = `
+      <div class="flex-grow bg-gray-100 flex h-full overflow-hidden">
+        <div class="w-64 bg-white border-r shadow-sm hidden md:flex flex-col">
+          <div class="p-4 border-b bg-gray-50"><h3 class="font-bold text-gray-700">Article Tools</h3></div>
+          <div class="p-4 space-y-2 flex-grow overflow-y-auto">
+            <button onclick="exportToDocx()" class="w-full text-left px-4 py-2.5 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 transition flex items-center font-medium text-sm">
+              <i class="fas fa-file-word mr-2 w-5 text-center"></i> Download DOCX
+            </button>
+            <button onclick="showToast('Feature available in Pro version', 'info')" class="w-full text-left px-4 py-2 text-gray-600 rounded-lg hover:bg-gray-100 transition flex items-center text-sm">
+              <i class="fas fa-check-double mr-2 w-5 text-center"></i> Quality Assessment
+            </button>
+            <button onclick="showToast('Feature available in Pro version', 'info')" class="w-full text-left px-4 py-2 text-gray-600 rounded-lg hover:bg-gray-100 transition flex items-center text-sm">
+              <i class="fas fa-user-check mr-2 w-5 text-center"></i> Reviewer Simulation
+            </button>
+          </div>
+          <div class="p-4 border-t">
+            <button onclick="renderView('dashboard')" class="w-full text-center px-4 py-2 text-gray-600 border rounded-lg hover:bg-gray-50 text-sm font-medium">Back to Dashboard</button>
+          </div>
+        </div>
+
+        <div class="flex-grow flex flex-col overflow-y-auto">
+          <div class="bg-white m-4 md:m-8 p-8 md:p-12 rounded-xl shadow-sm max-w-4xl mx-auto w-full border border-gray-100">
+            <div class="flex justify-between items-center mb-6 border-b pb-4">
+              <div>
+                <span class="px-2.5 py-1 bg-green-100 text-green-800 text-xs font-bold rounded-full uppercase">Draft Generated</span>
+                <div class="text-xs text-gray-500 mt-1">Review and customize your manuscript draft below.</div>
+              </div>
+              <button onclick="exportToDocx()" class="bg-blue-600 text-white px-4 py-2 rounded-lg shadow text-sm font-medium hover:bg-blue-700 flex items-center">
+                <i class="fas fa-download mr-1.5"></i> Download DOCX
+              </button>
+            </div>
+            
+            <div class="markdown-body font-serif text-gray-800 leading-relaxed" id="draft-content">
+              ${htmlContent}
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+}
+
+async function handleAuth(e, type) {
+  e.preventDefault();
+  const btn = document.getElementById('auth-btn');
+  const user = document.getElementById('auth-user').value;
+  const pass = document.getElementById('auth-pass').value;
+  let tier = 'free';
+  if (type === 'register') {
+    const tierElem = document.getElementById('auth-tier');
+    if (tierElem) tier = tierElem.value;
+  }
+
+  btn.disabled = true;
+  btn.innerText = 'Processing...';
+
+  try {
+    const res = await callBackend(type, { username: user, password: pass, tier: tier });
+    currentUser = res.data;
+    localStorage.setItem('journalGenUser', JSON.stringify(currentUser));
+    showToast(`Welcome, ${currentUser.username}!`, 'success');
+    renderView('dashboard');
+  } catch (error) {
+    showToast(error.message || 'Authentication failed', 'error');
+  } finally {
+    btn.disabled = false;
+    btn.innerText = type === 'login' ? 'Sign In' : 'Register';
+  }
+}
+
+async function handleSaveApiKey(e) {
+  e.preventDefault();
+  const key = document.getElementById('user-api-key').value;
+  try {
+    await callBackend('saveApiKey', { username: currentUser.username, apiKey: key });
+    currentUser.apiKey = key;
+    localStorage.setItem('journalGenUser', JSON.stringify(currentUser));
+    showToast('API Key saved successfully', 'success');
+  } catch (err) {
+    showToast(err.message || 'Failed to save API Key', 'error');
+  }
+}
+
+async function handleGenerate(e) {
+  e.preventDefault();
+  
+  if (currentUser.tier === 'free' && currentUser.articleCount >= 3) {
+    showToast('Free tier limit reached. Please upgrade.', 'error');
+    return;
+  }
+  if (currentUser.tier === 'paid' && !currentUser.apiKey) {
+    showToast('Please set your Google AI Studio API Key in the dashboard.', 'error');
+    return;
+  }
+
+  const payload = {
+    username: currentUser.username,
+    topic: document.getElementById('gen-topic').value,
+    language: document.getElementById('gen-lang').value,
+    wordCount: document.getElementById('gen-words').value,
+    method: document.getElementById('gen-method').value,
+    citation: document.getElementById('gen-citation').value
+  };
+
+  document.getElementById('generate-form').classList.add('hidden');
+  const progressContainer = document.getElementById('progress-container');
+  progressContainer.classList.remove('hidden');
+  
+  const steps = [
+    "Analyzing Research Topic...",
+    "Identifying Research Problem & Gap...",
+    "Designing Research Method...",
+    "Building Article Structure...",
+    "Generating Manuscript (Anti-Hallucination Active)...",
+    "Formatting Citations & Finalizing..."
+  ];
+  const stepText = document.getElementById('progress-text');
+  const bar = document.getElementById('progress-bar');
+  const stepList = document.getElementById('progress-steps');
+  
+  let stepIndex = 0;
+  
+  const progressInterval = setInterval(() => {
+    if(stepIndex < steps.length - 1) {
+      stepText.innerText = steps[stepIndex];
+      bar.style.width = `${(stepIndex + 1) * 15}%`;
+      stepList.innerHTML += `<li><i class="fas fa-check text-green-500 mr-1"></i> ${steps[stepIndex]}</li>`;
+      stepIndex++;
+    }
+  }, 1200);
+
+  try {
+    const res = await callBackend('generateArticle', payload);
+    
+    clearInterval(progressInterval);
+    bar.style.width = '100%';
+    stepText.innerText = "Generation Complete!";
+    
+    if(currentUser.tier === 'free') {
+      currentUser.articleCount++;
+      localStorage.setItem('journalGenUser', JSON.stringify(currentUser));
+    }
+    
+    currentDraft = res.data;
+    
+    setTimeout(() => {
+      renderView('result');
+      showToast('Draft generated successfully!', 'success');
+    }, 600);
+
+  } catch (error) {
+    clearInterval(progressInterval);
+    document.getElementById('generate-form').classList.remove('hidden');
+    progressContainer.classList.add('hidden');
+    showToast(error.message || 'Generation failed', 'error');
+  }
+}
+
+function exportToDocx() {
+  if(!currentDraft) return;
+  const preHtml = "<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'><head><meta charset='utf-8'><title>Export HTML To Doc</title></head><body>";
+  const postHtml = "</body></html>";
+  const content = document.getElementById('draft-content').innerHTML;
+  const html = preHtml + content + postHtml;
+
+  const blob = new Blob(['\ufeff', html], {
+      type: 'application/msword'
+  });
+  
+  const url = 'data:application/vnd.ms-word;charset=utf-8,' + encodeURIComponent(html);
+  const filename = currentDraft.title ? currentDraft.title.replace(/[^a-z0-9]/gi, '_').toLowerCase() + '.doc' : 'document.doc';
+  
+  const downloadLink = document.createElement("a");
+  document.body.appendChild(downloadLink);
+  
+  if(navigator.msSaveOrOpenBlob ){
+      navigator.msSaveOrOpenBlob(blob, filename);
+  } else {
+      downloadLink.href = url;
+      downloadLink.download = filename;
+      downloadLink.click();
+  }
+  document.body.removeChild(downloadLink);
+  showToast('Downloading DOCX...', 'success');
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initApp);
+} else {
+  initApp();
+}
+</script>
